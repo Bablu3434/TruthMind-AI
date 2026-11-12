@@ -2,8 +2,6 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status
-
 from .serializers import RegisterSerializer
 
 
@@ -24,12 +22,12 @@ def register_user(request):
                 "username": user.username,
                 "email": user.email
             }
-        }, status=status.HTTP_201_CREATED)
+        }, status=201)
 
     return Response({
         "success": False,
         "errors": serializer.errors
-    }, status=status.HTTP_400_BAD_REQUEST)
+    }, status=400)
 
 
 @api_view(['GET'])

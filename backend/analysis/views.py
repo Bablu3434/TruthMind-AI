@@ -1,44 +1,53 @@
 
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.decorators import permission_classes
 from rest_framework.response import Response
-from rest_framework import status
 
 from .models import AnalysisRecord
 from .serializers import AnalysisSerializer
+from .ai_engine import analyze_statement
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def analyze_statement(request):
+def analyze_statement_view(request):
 
-    statement = request.data.get('statement', '').strip()
+    serializer = AnalysisSerializer(data=request.data)
 
-    if not statement:
+    if serializer.is_valid():
+
+        statement = serializer.validated_data['statement']
+
+        # Run local analysis engine
+        analysis_result = analyze_statement(statement)
+
+        signals_text = "\n".join(
+            f"- {signal}"
+            for signal in analysis_result['signals']
+        )
+
+        final_result = (
+            analysis_result['result']
+            + "\n\nObservations:\n"
+            + signals_text
+        )
+
+        analysis = serializer.save(
+            user=request.user,
+            status='unverified',
+            result=final_result
+        )
+
         return Response({
-            "success": False,
-            "message": "Please enter a statement"
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    if len(statement) > 5000:
-        return Response({
-            "success": False,
-            "message": "Maximum 5000 characters allowed"
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    record = AnalysisRecord.objects.create(
-        user=request.user,
-        statement=statement,
-        status='unverified',
-        result='No evidence verification has been performed yet.'
-    )
+            "success": True,
+            "message": "Statement analysis completed",
+            "analysis": AnalysisSerializer(analysis).data
+        }, status=201)
 
     return Response({
-        "success": True,
-        "message": "Statement saved successfully",
-        "analysis": AnalysisSerializer(record).data
-    }, status=status.HTTP_201_CREATED)
+        "success": False,
+        "errors": serializer.errors
+    }, status=400)
 
 
 @api_view(['GET'])
@@ -55,25 +64,4 @@ def analysis_history(request):
         "success": True,
         "total": records.count(),
         "history": serializer.data
-    })
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def dashboard_stats(request):
-
-    records = AnalysisRecord.objects.filter(user=request.user)
-
-    return Response({
-        "success": True,
-        "total_analyses": records.count(),
-        "unverified": records.filter(
-            status='unverified'
-        ).count(),
-        "verified": records.filter(
-            status='verified'
-        ).count(),
-        "contradicted": records.filter(
-            status='contradicted'
-        ).count()
     })
